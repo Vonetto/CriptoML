@@ -1,0 +1,30 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+
+# OS / editor junk
+.DS_Store
+.vscode/
+.idea/
+
+# Local data and experimental outputs
+
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+
+!experiments/.gitkeep
+
+# Notebook junk
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log

@@ -1,0 +1,15 @@
+dataset: binance_daily
+vendor: binance
+universe_filters:
+  min_volume_usd: 10000000
+  exclude_stablecoins: true
+  exclude_wrapped: true
+fields: [open, high, low, close, volume, turnover]
+timeframe: 1D
+start_date: 2017-01-01
+storage:
+  raw_path: data/raw/binance
+  processed_path: data/processed/binance
+  format: parquet
+notes: |
+  Placeholder para la ingesta diaria de OHLCV desde la API de Binance o dumps en parquet.

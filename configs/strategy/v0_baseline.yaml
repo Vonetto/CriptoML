@@ -1,0 +1,36 @@
+name: v0_baseline_momentum
+description: |
+  Estrategia baseline de momentum absoluto a 30 días. Universo diario spot,
+  rebalance semanal, pesos inverse-vol y filtros básicos por volumen.
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+  top_n: 40
+  rebalance_freq: 1M
+  exclude: {}
+
+signal:
+  type: momentum
+  lookback_days: 30
+  annualize: false
+
+portfolio:
+  selection_top_pct: 0.2
+  rebalance_freq: 1W
+  weighting: inverse_vol
+  vol_lookback_days: 30
+  cash_buffer_pct: 0.02
+
+execution:
+  commission_pct: 0.0005
+  slippage_model: none
+
+backtest:
+  initial_capital: 1000
+  start_date: 2019-11-01
+  end_date: 2025-01-01
+  seed: 42

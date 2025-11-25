@@ -1,0 +1,17 @@
+name: daily_default
+calendar: crypto_daily
+clock:
+  data_frequency: 1D
+  rebalance_time: "00:00"
+risk_model:
+  return_col: close
+  price_col: close
+  cash_symbol: USDT
+execution:
+  commission_pct: 0.0005
+  slippage_model: none
+output:
+  root_dir: experiments
+  save_equity_curve: true
+  save_orders: true
+  save_logs: true
