@@ -1,0 +1,43 @@
+name: v1_ridge_momentum_ls_aggro
+description: |
+  V1 Ridge long-short inverse-vol, gross=1.5, sin overlay.
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+  top_n: 40
+  rebalance_freq: 1M
+  exclude: {}
+
+signal:
+  type: predictions
+  path: data/processed/predictions/v1/ridge_predictions.parquet
+
+risk_overlay:
+  enabled: false
+
+portfolio:
+  selection_top_pct: 0.2
+  rebalance_freq: 1W
+  weighting: inverse_vol
+  vol_lookback_days: 30
+  cash_buffer_pct: 0.0
+  long_short:
+    enabled: true
+    long_selection_pct: 0.2
+    short_selection_pct: 0.2
+    gross_leverage: 1.5
+    weighting: inverse_vol
+
+execution:
+  commission_pct: 0.0005
+  slippage_model: none
+
+backtest:
+  initial_capital: 1000
+  start_date: 2020-01-01
+  end_date: 2025-01-01
+  seed: 42

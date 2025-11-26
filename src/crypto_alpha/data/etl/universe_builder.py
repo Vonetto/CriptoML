@@ -88,18 +88,25 @@ def _rolling_metrics(
     window_start: datetime,
     window_end: datetime,
     min_points: int,
+    active_vol_threshold: float,
 ) -> dict | None:
     ohlcv = client.fetch_klines(symbol, start=window_start, end=window_end, interval="1d")
     if ohlcv.empty or len(ohlcv) < min_points:
         logger.debug("Skipping %s: insufficient OHLCV history", symbol)
         return None
     volume = ohlcv["volume_quote"].mean()
-    trades = ohlcv.get("trade_count")
+    trades = ohlcv.get("num_trades")
     avg_trades = trades.mean() if trades is not None else None
+    if active_vol_threshold > 0:
+        persistence = (ohlcv["volume_quote"] >= active_vol_threshold).sum()
+    else:
+        persistence = len(ohlcv)
     return {
         "symbol": symbol,
         "avg_volume_30d": volume,
         "avg_trades_30d": avg_trades,
+        "volume_active_days": persistence,
+        "active_vol_threshold": active_vol_threshold,
     }
 
 
@@ -124,6 +131,9 @@ def build_universe_v0b(
     end: datetime,
     lookback_days: int = 30,
     min_volume_usd: float = 10_000_000,
+    active_vol_threshold: float = 5_000_000,
+    min_active_days: int = 20,
+    min_trades: float | None = None,
     top_n: int = 40,
     output_dir: Path | str = "data/processed/universe/v0b",
     cmc_client: CoinMarketCapClient | None = None,
@@ -185,7 +195,7 @@ def build_universe_v0b(
                 note="filters_removed_all",
             )
             continue
-        df = _load_cached_metrics(cache_path, as_of, lookback_days)
+        df = _load_cached_metrics(cache_path, as_of, lookback_days, active_vol_threshold)
         if df is None:
             measurements: List[dict] = []
             for symbol in tqdm(
@@ -199,6 +209,7 @@ def build_universe_v0b(
                     window_start.to_pydatetime(),
                     (window_end + pd.Timedelta(days=1)).to_pydatetime(),
                     min_points=lookback_days,
+                    active_vol_threshold=active_vol_threshold,
                 )
                 if metrics is None:
                     continue
@@ -223,22 +234,30 @@ def build_universe_v0b(
             df = pd.DataFrame(measurements)
             df["as_of"] = as_of
             df["lookback_days"] = lookback_days
+            df["active_vol_threshold"] = active_vol_threshold
             if cache_path is not None:
                 _save_cached_metrics(cache_path, as_of, df)
         else:
             logger.info("Using cached metrics for %s", as_of.strftime("%Y-%m"))
 
-        logger.info(
-            "%s: metrics computed for %d/%d symbols",
-            as_of.strftime("%Y-%m"),
-            len(df),
-            len(symbols),
-        )
+        month_label = as_of.strftime("%Y-%m")
+        logger.info("%s: metrics computed for %d/%d symbols", month_label, len(df), len(symbols))
+
+        filter_note: list[str] = []
+
         filtered = df[df["avg_volume_30d"] >= min_volume_usd].copy()
+        filter_note.append(f"vol>={len(filtered)}")
+        logger.info(
+            "%s: %d symbols remain after avg_volume_30d >= %.0f (removed %d)",
+            month_label,
+            len(filtered),
+            min_volume_usd,
+            len(df) - len(filtered),
+        )
         if filtered.empty:
             logger.warning(
-                "%s: all %d symbols fell below threshold (vol>=%.0f)",
-                as_of.strftime("%Y-%m"),
+                "%s: all %d symbols fell below avg volume threshold (>=%.0f USD).",
+                month_label,
                 len(df),
                 min_volume_usd,
             )
@@ -252,6 +271,107 @@ def build_universe_v0b(
                 note="volume_threshold",
             )
             continue
+
+        if min_active_days > 0:
+            persisted = filtered[filtered["volume_active_days"] >= min_active_days].copy()
+            filter_note.append(f"persist>={len(persisted)}")
+            logger.info(
+                "%s: %d symbols remain after persistence >= %d days (threshold %.0f).",
+                month_label,
+                len(persisted),
+                min_active_days,
+                active_vol_threshold,
+            )
+            if persisted.empty:
+                logger.warning(
+                    "%s: all %d symbols failed persistence (need >=%d days vol>=%.0f).",
+                    month_label,
+                    len(filtered),
+                    min_active_days,
+                    active_vol_threshold,
+                )
+                _append_status_row(
+                    status_path,
+                    as_of,
+                    pool_size=len(symbols),
+                    metrics_count=len(df),
+                    selected_count=0,
+                    status="filtered_out",
+                    note="persistence_threshold",
+                )
+                continue
+        else:
+            persisted = filtered
+            filter_note.append(f"persist={len(persisted)}")
+
+        after_trades = persisted
+        trades_applied = False
+        if min_trades is not None and min_trades > 0:
+            trades_applied = True
+            if "avg_trades_30d" not in after_trades.columns or after_trades[
+                "avg_trades_30d"
+            ].isna().all():
+                logger.warning(
+                    "%s: avg_num_trades_30d unavailable, skipping trade-count filter.",
+                    month_label,
+                )
+                trades_applied = False
+            else:
+                after_trades = after_trades[after_trades["avg_trades_30d"] >= min_trades].copy()
+                filter_note.append(f"trades>={len(after_trades)}")
+                logger.info(
+                    "%s: %d symbols remain after avg_num_trades_30d >= %.0f.",
+                    month_label,
+                    len(after_trades),
+                    min_trades,
+                )
+                if after_trades.empty:
+                    logger.warning(
+                        "%s: all %d symbols filtered out by avg_num_trades_30d >= %.0f.",
+                        month_label,
+                        len(persisted),
+                        min_trades,
+                    )
+                    _append_status_row(
+                        status_path,
+                        as_of,
+                        pool_size=len(symbols),
+                        metrics_count=len(df),
+                        selected_count=0,
+                        status="filtered_out",
+                        note="trades_threshold",
+                    )
+                    continue
+
+        filtered = after_trades
+        if not trades_applied:
+            filter_note.append(f"trades={len(filtered)}")
+
+        if filtered.empty:
+            logger.warning("%s: no symbols left after liquidity filters.", month_label)
+            _append_status_row(
+                status_path,
+                as_of,
+                pool_size=len(symbols),
+                metrics_count=len(df),
+                selected_count=0,
+                status="filtered_out",
+                note="no_symbols_after_filters",
+            )
+            continue
+
+        preview = (
+            filtered.sort_values("avg_volume_30d", ascending=False)
+            .head(5)[["symbol", "avg_volume_30d", "volume_active_days", "avg_trades_30d"]]
+        )
+        preview_rows = [
+            f"{row.symbol}:vol={row.avg_volume_30d:,.0f},days={int(row.volume_active_days)},trades={row.avg_trades_30d:,.0f}"
+            if pd.notna(row.avg_trades_30d)
+            else f"{row.symbol}:vol={row.avg_volume_30d:,.0f},days={int(row.volume_active_days)}"
+            for row in preview.itertuples()
+        ]
+        if preview_rows:
+            logger.info("%s: top liquidity snapshot -> %s", month_label, "; ".join(preview_rows))
         filtered["liquidity_score"] = filtered["avg_volume_30d"]
         filtered.sort_values(["avg_volume_30d"], ascending=False, inplace=True)
         filtered["rank"] = range(1, len(filtered) + 1)
@@ -264,6 +384,7 @@ def build_universe_v0b(
             len(selection),
             len(symbols),
         )
+        note = ";".join(filter_note)
         _append_status_row(
             status_path,
             as_of,
@@ -271,7 +392,7 @@ def build_universe_v0b(
             metrics_count=len(df),
             selected_count=len(selection),
             status="saved",
-            note="",
+            note=note,
         )
         saved_paths.append(outfile)
     return saved_paths
@@ -335,6 +456,7 @@ def _load_cached_metrics(
     cache_dir: Path | None,
     as_of: pd.Timestamp,
     lookback_days: int,
+    active_vol_threshold: float,
 ) -> pd.DataFrame | None:
     if cache_dir is None:
         return None
@@ -342,14 +464,33 @@ def _load_cached_metrics(
     if not path.exists():
         return None
     df = pd.read_parquet(path)
-    if not df.empty and "lookback_days" in df.columns:
-        cached = int(df["lookback_days"].iloc[0])
-        if cached != lookback_days:
+    if not df.empty:
+        if "lookback_days" in df.columns:
+            cached = int(df["lookback_days"].iloc[0])
+            if cached != lookback_days:
+                logger.info(
+                    "Ignoring cache for %s due to lookback mismatch (%s vs %s)",
+                    as_of.strftime("%Y-%m"),
+                    cached,
+                    lookback_days,
+                )
+                return None
+        if "active_vol_threshold" in df.columns:
+            cached_thr = float(df["active_vol_threshold"].iloc[0])
+            if abs(cached_thr - active_vol_threshold) > 1e-9:
+                logger.info(
+                    "Ignoring cache for %s due to volume threshold mismatch (%.0f vs %.0f)",
+                    as_of.strftime("%Y-%m"),
+                    cached_thr,
+                    active_vol_threshold,
+                )
+                return None
+        elif active_vol_threshold > 0:
             logger.info(
-                "Ignoring cache for %s due to lookback mismatch (%s vs %s)",
+                "Ignoring cache for %s due to missing persistence threshold metadata.",
                 as_of.strftime("%Y-%m"),
-                cached,
-                lookback_days,
+                0,
+                0,
             )
             return None
     return df

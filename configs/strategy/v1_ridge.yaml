@@ -1,0 +1,45 @@
+name: v1_ridge_momentum_overlay
+description: |
+  V1 Ridge model con capa de control de riesgos (vol targeting + drawdown throttle).
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+  top_n: 40
+  rebalance_freq: 1M
+  exclude: {}
+
+signal:
+  type: predictions
+  path: data/processed/predictions/v1/ridge_predictions.parquet
+
+risk_overlay:
+  enabled: true
+  mode: proportional
+  target_vol_annual: 0.4
+  vol_window_periods: 60
+  periods_per_year: 52
+  max_gross_leverage: 1.5
+  dd_trigger: 0.3
+  dd_proportionality: 1.5
+  min_scale: 0.2
+
+portfolio:
+  selection_top_pct: 0.2
+  rebalance_freq: 1W
+  weighting: inverse_vol
+  vol_lookback_days: 30
+  cash_buffer_pct: 0.02
+
+execution:
+  commission_pct: 0.0005
+  slippage_model: none
+
+backtest:
+  initial_capital: 1000
+  start_date: 2020-01-01
+  end_date: 2025-01-01
+  seed: 42

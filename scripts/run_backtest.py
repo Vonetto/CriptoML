@@ -1,4 +1,4 @@
-"""CLI to execute a strategy config (V0 baseline)."""
+"""CLI to execute a strategy config (V0/V1)."""
 from __future__ import annotations
 
 import argparse
@@ -6,6 +6,8 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
@@ -23,6 +25,12 @@ def parse_args() -> argparse.Namespace:
         "--strategy",
         default="v0_baseline",
         help="Name of the YAML file under configs/strategy (without extension)",
+    )
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        help="Override config values (dot.path=value). Example: risk_overlay.target_vol_annual=0.8",
     )
     return parser.parse_args()
 
@@ -45,7 +53,13 @@ def _save_results(result, backtest_config: dict, strategy_name: str) -> Path:
 
 def main() -> None:
     args = parse_args()
-    strategy = load_strategy_config(args.strategy)
+    overrides = {}
+    for entry in args.override:
+        if "=" not in entry:
+            raise ValueError(f"Override '{entry}' must be in key=value format.")
+        key, value = entry.split("=", 1)
+        overrides[key.strip()] = yaml.safe_load(value.strip())
+    strategy = load_strategy_config(args.strategy, overrides=overrides or None)
     data_config = load_yaml(ROOT / strategy.references["data_config"])
     backtest_config = load_yaml(ROOT / strategy.references["backtest_config"])
 

@@ -20,6 +20,7 @@ class StrategyConfig:
     portfolio: Dict[str, Any]
     execution: Dict[str, Any]
     backtest: Dict[str, Any]
+    risk_overlay: Dict[str, Any] | None = None
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
@@ -29,10 +30,27 @@ def load_yaml(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def load_strategy_config(name: str, root: Path | None = None) -> StrategyConfig:
+def _apply_overrides(target: Dict[str, Any], overrides: Dict[str, Any]) -> None:
+    for dotted_key, value in overrides.items():
+        keys = dotted_key.split(".")
+        node = target
+        for key in keys[:-1]:
+            if key not in node or not isinstance(node[key], dict):
+                node[key] = {}
+            node = node[key]
+        node[keys[-1]] = value
+
+
+def load_strategy_config(
+    name: str,
+    root: Path | None = None,
+    overrides: Dict[str, Any] | None = None,
+) -> StrategyConfig:
     """Load a strategy config from configs/strategy/<name>.yaml."""
 
     base = root or Path(__file__).resolve().parents[2]
     config_path = base / "configs" / "strategy" / f"{name}.yaml"
     data = load_yaml(config_path)
+    if overrides:
+        _apply_overrides(data, overrides)
     return StrategyConfig(**data)

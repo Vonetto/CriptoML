@@ -42,6 +42,9 @@ class BinanceFuturesClient:
     base_url: str = "https://fapi.binance.com"
     timeout: int = 10
     rate_limit: float = 0.2
+    max_retries: int = 5
+    backoff_base: float = 0.5
+    backoff_factor: float = 1.5
     session: Session = field(default_factory=requests.Session)
 
     def __post_init__(self) -> None:
@@ -49,13 +52,28 @@ class BinanceFuturesClient:
 
     # -- Generic helpers -----------------------------------------------------------------
     def _request(self, path: str, params: Optional[Dict[str, object]] = None) -> Response:
-        if self.rate_limit:
-            time.sleep(self.rate_limit)
-        response = self.session.get(
-            f"{self.base_url}{path}", params=params, timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response
+        last_error: requests.HTTPError | None = None
+        attempts = self.max_retries + 1
+        for attempt in range(attempts):
+            if self.rate_limit:
+                time.sleep(self.rate_limit)
+            try:
+                response = self.session.get(
+                    f"{self.base_url}{path}", params=params, timeout=self.timeout
+                )
+                response.raise_for_status()
+                return response
+            except requests.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status == 429 and attempt < attempts - 1:
+                    delay = self.backoff_base * (self.backoff_factor ** attempt)
+                    time.sleep(delay)
+                    last_error = exc
+                    continue
+                raise
+        if last_error:
+            raise last_error
+        raise RuntimeError("Binance request failed without HTTP response.")
 
     def _paginate_klines(
         self,
@@ -161,11 +179,13 @@ class BinanceFuturesClient:
             "quote_volume",
             "taker_base_volume",
             "taker_quote_volume",
+            "trade_count",
         ]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms", utc=True).dt.tz_convert(None)
         df.rename(columns={"quote_volume": "volume_quote"}, inplace=True)
+        df.rename(columns={"trade_count": "num_trades"}, inplace=True)
         keep = [
             "timestamp",
             "symbol",
@@ -175,6 +195,7 @@ class BinanceFuturesClient:
             "close",
             "volume",
             "volume_quote",
+            "num_trades",
             "taker_quote_volume",
         ]
         return df[keep]

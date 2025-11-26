@@ -15,6 +15,27 @@ def _select_top(df: pd.DataFrame, selection_top_pct: float) -> pd.DataFrame:
     return df.head(n_assets)
 
 
+def _apply_weighting(
+    selection: pd.DataFrame,
+    weighting: str,
+    volatility_col: str,
+) -> pd.Series:
+    if selection.empty:
+        return pd.Series(dtype=float)
+    if weighting == "inverse_vol" and volatility_col in selection:
+        selection = selection.dropna(subset=[volatility_col])
+        if selection.empty:
+            return pd.Series(dtype=float)
+        inv_vol = 1.0 / selection[volatility_col].replace(0, np.nan)
+        weights = inv_vol.fillna(0.0)
+    else:
+        weights = pd.Series(1.0, index=selection.index)
+    total = weights.sum()
+    if total <= 0:
+        return pd.Series(dtype=float)
+    return weights / total
+
+
 def compute_weights(
     df: pd.DataFrame,
     selection_top_pct: float,
@@ -29,19 +50,10 @@ def compute_weights(
     if selection.empty:
         return {}
 
-    if weighting == "inverse_vol" and volatility_col in selection:
-        selection = selection.dropna(subset=[volatility_col])
-        if selection.empty:
-            return {}
-        inv_vol = 1.0 / selection[volatility_col].replace(0, np.nan)
-        weights = inv_vol.fillna(0.0)
-    else:
-        weights = pd.Series(1.0, index=selection.index)
-
-    total = weights.sum()
-    if total <= 0:
+    weights = _apply_weighting(selection, weighting, volatility_col)
+    if weights.empty:
         return {}
-    weights = weights / total
+
     if cash_buffer_pct:
         weights *= max(1.0 - cash_buffer_pct, 0.0)
     return {
@@ -49,6 +61,40 @@ def compute_weights(
         for symbol, weight in zip(selection["symbol"], weights)
         if weight > 0
     }
+
+
+def compute_long_short_weights(
+    df: pd.DataFrame,
+    long_pct: float,
+    short_pct: float,
+    weighting: str = "equal",
+    volatility_col: str = "volatility",
+    gross_leverage: float = 1.0,
+) -> Dict[str, float]:
+    keep = df.dropna(subset=["signal"])
+    if keep.empty:
+        return {}
+
+    long_sel = keep.sort_values("signal", ascending=False).head(max(int(len(keep) * long_pct), 1))
+    short_sel = keep.sort_values("signal", ascending=True).head(max(int(len(keep) * short_pct), 1))
+
+    long_weights = _apply_weighting(long_sel, weighting, volatility_col)
+    short_weights = _apply_weighting(short_sel, weighting, volatility_col)
+    if long_weights.empty or short_weights.empty:
+        return {}
+
+    half_gross = gross_leverage / 2.0
+    long_weights *= half_gross
+    short_weights *= half_gross
+
+    weights: Dict[str, float] = {}
+    for idx, symbol in long_sel["symbol"].items():
+        weight = long_weights.loc[idx]
+        weights[symbol] = weights.get(symbol, 0.0) + float(weight)
+    for idx, symbol in short_sel["symbol"].items():
+        weight = short_weights.loc[idx]
+        weights[symbol] = weights.get(symbol, 0.0) - float(weight)
+    return {symbol: weight for symbol, weight in weights.items() if weight != 0}
 
 
 def turnover(previous: Dict[str, float], new: Dict[str, float]) -> float:

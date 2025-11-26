@@ -20,6 +20,8 @@ __pycache__/
 !data/external/.gitkeep
 
 !experiments/.gitkeep
+data/
+experiments/
 
 # Notebook junk
 .ipynb_checkpoints/

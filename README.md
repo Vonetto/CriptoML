@@ -41,8 +41,25 @@ Los pipelines que usan `CoinMarketCapClient` leerán la clave desde esa variable
 
 El archivo `configs/strategy/v0_baseline.yaml` captura estos parámetros. Ejecutar `python scripts/run_backtest.py --strategy v0_baseline` (una vez implementada la lógica) reproducirá el experimento y guardará resultados en `experiments/v0_baseline_*`.
 
-## Próximos pasos sugeridos
-1. Implementar loaders reales en `src/crypto_alpha/data/` (descarga/parquet/limpieza).
-2. Completar el motor de backtest en `src/crypto_alpha/backtest/engine.py` y el script `scripts/run_backtest.py`.
-3. Añadir notebooks de sanity checks (`notebooks/01_v0_momentum...`).
-4. Etiquetar la versión cuando el pipeline de V0 sea reproducible.
+## V1 – Ridge cross-sectional (perps, PIT)
+- **Datos/Universo**: OHLCV diarios de perps Binance, universos PIT mensuales en `data/processed/universe/v0b/` (top 30–40 por liquidez; sin sesgo de supervivencia).  
+- **Features/target**: `scripts/etl/binance_futures.py features-v1 …` genera `features.parquet` con retornos 1/3/7/30d, vol 7/30d, SMA gaps, RSI‑14, ratios de volumen, proxies de liquidez y `forward_return_5d` / `target_excess_return_5d`.  
+- **Modelo**: Ridge rolling (~2 años ventana), `scripts/train_v1.py --features-file ... --output-file ... --save-coefs ...` → predicciones PIT en `data/processed/predictions/v1/ridge_predictions.parquet` y coeficientes en `ridge_coefs.parquet`.  
+- **Evaluación señal**: `scripts/evaluate_predictions.py` calcula IC/RankIC y compara vs momentum (ret_7d/30d). En la muestra actual, RankIC ≈ 0.076 (t‑stat > 4), indicando edge cross-sectional.  
+- **Estrategias**:
+  - **Long-only**: `configs/strategy/v1_ridge.yaml` (overlay proporcional configurable). Aun con overlay, Sharpe bajo; sirve como smoke test.  
+  - **Long-short**: `configs/strategy/v1_ridge_ls_conservative.yaml` (gross=1.0) y `..._aggro.yaml` (gross=1.5). Sin overlay. Resultado base (gross=1.0): Sharpe ~0.51, vol ~0.21, MaxDD ~‑0.26 en 2020‑2025.  
+- **Backtests**: `python scripts/run_backtest.py --strategy v1_ridge_ls_conservative` (o `..._aggro`).  
+- **Plot**: `scripts/plot_equity.py --experiment ... --btc-parquet data/processed/binance/ohlcv_1d.parquet` para comparar V0/V1/BTC.  
+- **Análisis de coeficientes**: `scripts/analyze_ridge_coefs.py` genera `experiments/v1_eval/coefs/` con stats y boxplot interactivo.
+
+## Herramientas clave
+- `run_grid.py`: barrido de parámetros de overlay (target_vol, min_scale, dd_proportionality, cooldown, etc.) usando overrides en caliente.
+- `evaluate_predictions.py`: IC/RankIC y comparación top‑K contra señales baseline.
+- `run_backtest.py --override key=value`: inyecta cambios sin editar YAML (útil para experimentar con riesgo, leverage, pesos).
+
+## Estado actual (nov 2025)
+- Señal V1 validada estadísticamente (RankIC positivo).  
+- Monetización long-only limitada: overlay no logra Sharpe atractivo.  
+- Portafolio long-short (gross 1.0–1.5) con Sharpe ~0.5 y DD moderado: base recomendada para avanzar a V2.  
+- Próximo foco: refinar overlay ligero si se requiere, añadir control de beta/funding y seguir roadmap hacia carry (V2).
