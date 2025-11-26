@@ -32,3 +32,6 @@ experiments/
 # Logs
 logs/
 *.log
+
+
+*.zip
