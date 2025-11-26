@@ -9,7 +9,8 @@ timeframe: 1D
 start_date: 2017-01-01
 storage:
   raw_path: data/raw/binance
-  processed_path: data/processed/binance
+  processed_path: data/processed/binance/ohlcv_1d.parquet
+  funding_path: data/processed/binance/funding_1d.parquet
   format: parquet
 notes: |
   Placeholder para la ingesta diaria de OHLCV desde la API de Binance o dumps en parquet.

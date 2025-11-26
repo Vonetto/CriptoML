@@ -1,0 +1,42 @@
+name: v2c_carry_contra_exp
+description: |
+  V2c experimental: señal carry contrarian (−z_carry), funding en PnL, LS inverse-vol.
+  Alto Sharpe histórico pero IC débil y rolling Sharpe volátil. No baseline.
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+signal:
+  type: predictions
+  path: data/processed/predictions/v2b_carry_contra.parquet
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+  rebalance_freq: 1M
+  liquidity_lookback_days: 30
+
+portfolio:
+  long_short:
+    enabled: true
+    long_selection_pct: 0.2
+    short_selection_pct: 0.2
+    weighting: inverse_vol
+    gross_leverage: 1.0
+    max_weight_pct: null
+  selection_top_pct: 0.2
+  weighting: inverse_vol
+  rebalance_freq: 1W
+  vol_lookback_days: 30
+  cash_buffer_pct: 0.0
+
+execution:
+  commission_pct: 0.0004
+
+risk_overlay:
+  enabled: false
+
+backtest:
+  start_date: 2019-11-15
+  end_date: 2025-07-01
+  initial_capital: 10000
