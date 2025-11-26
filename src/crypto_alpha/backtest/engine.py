@@ -222,6 +222,7 @@ def run_backtest(
     weighting = strategy.portfolio.get("weighting", "equal")
     cash_buffer = float(strategy.portfolio.get("cash_buffer_pct", 0.0))
     commission = float(strategy.execution.get("commission_pct", 0.0))
+    max_weight_pct = strategy.portfolio.get("max_weight_pct")
     long_short_cfg = strategy.portfolio.get("long_short", {})
     long_short_enabled = bool(long_short_cfg.get("enabled", False))
 
@@ -294,6 +295,7 @@ def run_backtest(
                 weighting=long_short_cfg.get("weighting", weighting),
                 volatility_col="volatility",
                 gross_leverage=float(long_short_cfg.get("gross_leverage", 1.0)),
+                max_weight_pct=long_short_cfg.get("max_weight_pct", max_weight_pct),
             )
         else:
             weights = portfolio.compute_weights(
@@ -302,6 +304,7 @@ def run_backtest(
                 weighting=weighting,
                 volatility_col="volatility",
                 cash_buffer_pct=cash_buffer,
+                max_weight_pct=max_weight_pct,
             )
         if risk_params["enabled"] and weights:
             weights = {symbol: weight * risk_scale for symbol, weight in weights.items()}

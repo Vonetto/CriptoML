@@ -42,6 +42,7 @@ def compute_weights(
     weighting: str = "equal",
     volatility_col: str = "volatility",
     cash_buffer_pct: float = 0.0,
+    max_weight_pct: float | None = None,
 ) -> Dict[str, float]:
     """Return normalized weights according to the selected scheme."""
 
@@ -53,6 +54,12 @@ def compute_weights(
     weights = _apply_weighting(selection, weighting, volatility_col)
     if weights.empty:
         return {}
+    if max_weight_pct is not None and max_weight_pct > 0:
+        weights = weights.clip(upper=max_weight_pct)
+        total = weights.sum()
+        if total <= 0:
+            return {}
+        weights = weights / total
 
     if cash_buffer_pct:
         weights *= max(1.0 - cash_buffer_pct, 0.0)
@@ -70,6 +77,7 @@ def compute_long_short_weights(
     weighting: str = "equal",
     volatility_col: str = "volatility",
     gross_leverage: float = 1.0,
+    max_weight_pct: float | None = None,
 ) -> Dict[str, float]:
     keep = df.dropna(subset=["signal"])
     if keep.empty:
@@ -82,6 +90,16 @@ def compute_long_short_weights(
     short_weights = _apply_weighting(short_sel, weighting, volatility_col)
     if long_weights.empty or short_weights.empty:
         return {}
+
+    if max_weight_pct is not None and max_weight_pct > 0:
+        long_weights = long_weights.clip(upper=max_weight_pct)
+        short_weights = short_weights.clip(upper=max_weight_pct)
+        lw_sum = long_weights.sum()
+        sw_sum = short_weights.sum()
+        if lw_sum <= 0 or sw_sum <= 0:
+            return {}
+        long_weights = long_weights / lw_sum
+        short_weights = short_weights / sw_sum
 
     half_gross = gross_leverage / 2.0
     long_weights *= half_gross

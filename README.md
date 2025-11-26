@@ -53,6 +53,16 @@ El archivo `configs/strategy/v0_baseline.yaml` captura estos parámetros. Ejecut
 - **Plot**: `scripts/plot_equity.py --experiment ... --btc-parquet data/processed/binance/ohlcv_1d.parquet` para comparar V0/V1/BTC.  
 - **Análisis de coeficientes**: `scripts/analyze_ridge_coefs.py` genera `experiments/v1_eval/coefs/` con stats y boxplot interactivo.
 
+### Baseline V1 (LS) elegido
+- **Baseline oficial**: semanal, gross=1.0, inverse-vol, sin caps ni overlay.  
+  - 2020-22: Sharpe 0.86, vol 0.11, MaxDD -0.07  
+  - 2023-24: Sharpe 0.58, vol 0.27, MaxDD -0.18  
+  - Señal mantiene RankIC/IC positivos en ambos tramos.
+- **Config agresiva / experimento**: quincenal (2W), gross=1.0, inverse-vol.  
+  - 2020-22: Sharpe 0.25, vol 0.14, MaxDD -0.18 (peor que weekly)  
+  - 2023-24: Sharpe 1.97, vol 0.37, MaxDD -0.18 (excelente en régimen reciente)  
+  - Útil como candidato a overlay por régimen, no como baseline global.
+
 ## Herramientas clave
 - `run_grid.py`: barrido de parámetros de overlay (target_vol, min_scale, dd_proportionality, cooldown, etc.) usando overrides en caliente.
 - `evaluate_predictions.py`: IC/RankIC y comparación top‑K contra señales baseline.

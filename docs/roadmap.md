@@ -49,6 +49,10 @@ La estrategia crece en iteraciones cortas. Cada versión es una compuerta: no se
 - **Uso:** Factor value on-chain aislado y luego integrar en el modelo con momentum+carry.
 - **Meta:** Que on-chain mejore Sharpe o drawdowns sin introducir demasiado ruido.
 
+### V3+ – Rebalance adaptativo por régimen
+- **Idea:** Scheduler de rebalance según régimen (vol de BTC, HMM u otro filtro). En estados “riesgo alto” usar frecuencia 1W; en “riesgo bajo” usar 2W. 
+- **Cuidado:** Minimizar overfitting por régimen; validar en holdouts y con pocas reglas fijas (no grids extensos).
+
 ---
 
 ## Fase III – Portafolios Neutralizados (V4, V5)

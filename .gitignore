@@ -22,6 +22,8 @@ __pycache__/
 !experiments/.gitkeep
 data/
 experiments/
+!src/crypto_alpha/data/**
+!src/crypto_alpha/data
 
 # Notebook junk
 .ipynb_checkpoints/
