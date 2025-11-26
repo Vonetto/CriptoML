@@ -40,8 +40,25 @@ def load_ohlcv(config: Dict[str, object], base_path: Path | None = None) -> pd.D
             f"Processed dataset not found at {path}. Populate it before running backtests."
         )
 
+    if path.is_dir():
+        raise ValueError(f"processed_path must be a file, got directory: {path}")
+
     if path.suffix == ".csv":
         df = pd.read_csv(path)
     else:
         df = pd.read_parquet(path)
-    return _ensure_columns(df)
+    df = _ensure_columns(df)
+
+    funding_path = storage.get("funding_path")
+    if funding_path:
+        fpath = base / Path(funding_path)
+        if not fpath.exists():
+            raise FileNotFoundError(f"Funding dataset not found at {fpath}")
+        fdf = pd.read_parquet(fpath)
+        fdf["date"] = pd.to_datetime(fdf["date"]).dt.normalize()
+        fdf["symbol"] = fdf["symbol"].astype(str).str.upper()
+        df["date"] = df["timestamp"].dt.normalize()
+        df = df.merge(fdf, on=["date", "symbol"], how="left")
+        df = df.drop(columns=["date"])
+
+    return df

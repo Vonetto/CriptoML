@@ -17,10 +17,12 @@ if str(SRC_PATH) not in sys.path:
 
 from crypto_alpha.data.etl import (
     build_features_v1,
+    build_features_v2,
     build_universe_v0a,
     build_universe_v0b,
     download_ohlcv,
     download_open_interest,
+    download_funding,
 )
 from crypto_alpha.data.exchanges import BinanceFuturesClient, CoinMarketCapClient
 
@@ -99,6 +101,21 @@ def open_interest_command(args) -> None:
     )
     client.close()
 
+def funding_command(args) -> None:
+    client = BinanceFuturesClient()
+    symbols = _resolve_symbols(args, client)
+    start = _parse_date(args.start)
+    end = _parse_date(args.end)
+    download_funding(
+        symbols,
+        start=start,
+        end=end,
+        output_dir=args.output_dir,
+        output_file=args.output_file or None,
+        client=client,
+    )
+    client.close()
+
 
 def universe_v0a_command(args) -> None:
     client = BinanceFuturesClient()
@@ -151,6 +168,18 @@ def features_v1_command(args) -> None:
         active_vol_threshold=args.active_vol_threshold,
     )
 
+def features_v2_command(args) -> None:
+    build_features_v2(
+        ohlcv_path=args.ohlcv_file,
+        funding_path=args.funding_file,
+        universe_dir=args.universe_dir,
+        output_path=args.output_file,
+        start=_parse_date(args.start),
+        end=_parse_date(args.end),
+        rebalance_freq=args.rebalance_freq,
+        active_vol_threshold=args.active_vol_threshold,
+    )
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Binance Futures ETL helper")
@@ -193,6 +222,15 @@ def build_parser() -> argparse.ArgumentParser:
     oi.add_argument("--output-dir", default="data/raw/binance_futures/open_interest")
     oi.add_argument("--output-file", default="")
     oi.set_defaults(func=open_interest_command)
+
+    funding = subparsers.add_parser(
+        "funding", parents=[common], help="Download funding rates (8h aggregated to 1d)"
+    )
+    funding.add_argument("--start", required=True)
+    funding.add_argument("--end", required=True)
+    funding.add_argument("--output-dir", default="data/raw/binance_futures/funding")
+    funding.add_argument("--output-file", default="")
+    funding.set_defaults(func=funding_command)
 
     v0a = subparsers.add_parser("universe-v0a", help="Build provisional liquidity universe")
     v0a.add_argument("--min-volume", type=float, default=15_000_000)
@@ -259,6 +297,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Daily USD volume threshold for persistence calculations",
     )
     features.set_defaults(func=features_v1_command)
+
+    features_v2 = subparsers.add_parser("features-v2", help="Build V2 feature set (mom + carry)")
+    features_v2.add_argument("--ohlcv-file", required=True, help="Path to OHLCV parquet")
+    features_v2.add_argument("--funding-file", required=True, help="Path to daily funding parquet")
+    features_v2.add_argument("--universe-dir", required=True, help="Directory with PIT CSVs")
+    features_v2.add_argument(
+        "--output-file", default="data/processed/features/v2/features.parquet"
+    )
+    features_v2.add_argument("--start", required=True)
+    features_v2.add_argument("--end", required=True)
+    features_v2.add_argument(
+        "--rebalance-freq", default="1W", help="Rebalance frequency (default 1W)"
+    )
+    features_v2.add_argument(
+        "--active-vol-threshold",
+        type=float,
+        default=5_000_000,
+        help="Daily USD volume threshold for persistence calculations",
+    )
+    features_v2.set_defaults(func=features_v2_command)
 
     return parser
 

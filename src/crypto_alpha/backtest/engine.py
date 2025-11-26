@@ -27,6 +27,9 @@ class BacktestResult:
 def _prepare_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["date"] = df["timestamp"].dt.normalize()
+    if "funding_rate_1d" not in df.columns:
+        df["funding_rate_1d"] = 0.0
+    df["funding_rate_1d"] = df["funding_rate_1d"].fillna(0.0)
     return df.sort_values(["symbol", "date"]).reset_index(drop=True)
 
 
@@ -311,8 +314,17 @@ def run_backtest(
 
         price_start = daily_slice.set_index("symbol")["close"]
         price_end = df[df["date"] == next_date].set_index("symbol")["close"]
+        funding_series = daily_slice.set_index("symbol")["funding_rate_1d"]
 
-        gross = portfolio.portfolio_return(price_start, price_end, weights)
+        price_ret = portfolio.portfolio_return(price_start, price_end, weights)
+        funding_ret = 0.0
+        if not funding_series.empty and weights:
+            for sym, w in weights.items():
+                if sym in funding_series:
+                    fr = funding_series[sym]
+                    if pd.notna(fr):
+                        funding_ret += w * (-float(fr))
+        gross = price_ret + funding_ret
         turn = portfolio.turnover(prev_weights, weights)
         cost = commission * turn
         net = gross - cost

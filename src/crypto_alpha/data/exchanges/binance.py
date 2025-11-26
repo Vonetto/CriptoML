@@ -232,6 +232,44 @@ class BinanceFuturesClient:
         keep = ["timestamp", "symbol", "open_interest", "open_interest_usd"]
         return df[keep]
 
+    def fetch_funding_history(
+        self,
+        symbol: str,
+        start: datetime | pd.Timestamp | int | float | str | None = None,
+        end: datetime | pd.Timestamp | int | float | str | None = None,
+        limit: int = 1000,
+    ) -> pd.DataFrame:
+        """Fetch funding rates (8h) for a symbol, paginated, returned as a DataFrame."""
+
+        start_ms = _to_millis(start)
+        end_ms = _to_millis(end)
+        params: Dict[str, object] = {"symbol": symbol, "limit": limit}
+        if start_ms is not None:
+            params["startTime"] = start_ms
+        if end_ms is not None:
+            params["endTime"] = end_ms
+
+        data: List[Dict[str, object]] = []
+        while True:
+            payload = self._request("/fapi/v1/fundingRate", params=params).json()
+            if not payload:
+                break
+            data.extend(payload)
+            last_time = payload[-1]["fundingTime"]
+            next_start = int(last_time) + 1
+            if end_ms is not None and next_start >= end_ms:
+                break
+            params["startTime"] = next_start
+
+        df = pd.DataFrame(data)
+        if df.empty:
+            return df
+        df["timestamp"] = pd.to_datetime(df["fundingTime"], unit="ms", utc=True).dt.tz_convert(None)
+        df["funding_rate"] = pd.to_numeric(df.get("fundingRate"), errors="coerce")
+        df["symbol"] = symbol
+        keep = ["timestamp", "symbol", "funding_rate"]
+        return df[keep]
+
     def close(self) -> None:
         self.session.close()
 

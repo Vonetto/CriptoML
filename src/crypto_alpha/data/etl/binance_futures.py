@@ -97,4 +97,47 @@ def download_open_interest(
     return dataset
 
 
-__all__ = ["download_ohlcv", "download_open_interest"]
+def download_funding(
+    symbols: Sequence[str],
+    start: datetime,
+    end: datetime,
+    output_dir: Path | str = "data/raw/binance_futures/funding",
+    output_file: Path | str | None = None,
+    client: BinanceFuturesClient | None = None,
+) -> pd.DataFrame:
+    """Download funding rates (8h → aggregated daily) for Binance USDⓈ-M perps."""
+
+    own_client = client is None
+    client = client or BinanceFuturesClient()
+    symbols = _ensure_iterable(symbols)
+    base_dir = Path(output_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    frames: List[pd.DataFrame] = []
+
+    for symbol in tqdm(symbols, desc="Binance funding"):
+        df_raw = client.fetch_funding_history(symbol, start=start, end=end)
+        if df_raw.empty:
+            continue
+        df_raw["date"] = pd.to_datetime(df_raw["timestamp"]).dt.normalize()
+        daily = (
+            df_raw.groupby(["date", "symbol"], as_index=False)["funding_rate"]
+            .sum()
+            .rename(columns={"funding_rate": "funding_rate_1d"})
+        )
+        frames.append(daily)
+        daily.to_parquet(base_dir / f"{symbol}_funding.parquet", index=False)
+
+    if own_client:
+        client.close()
+
+    if not frames:
+        return pd.DataFrame()
+
+    dataset = pd.concat(frames).sort_values(["date", "symbol"]).reset_index(drop=True)
+    outfile = output_file or _default_output(base_dir.parent, "funding_1d.parquet")
+    Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+    dataset.to_parquet(outfile, index=False)
+    return dataset
+
+
+__all__ = ["download_ohlcv", "download_open_interest", "download_funding"]
