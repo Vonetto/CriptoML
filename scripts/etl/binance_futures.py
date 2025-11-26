@@ -16,6 +16,7 @@ if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
 from crypto_alpha.data.etl import (
+    build_features_v1,
     build_universe_v0a,
     build_universe_v0b,
     download_ohlcv,
@@ -122,6 +123,9 @@ def universe_v0b_command(args) -> None:
         end=_parse_date(args.end),
         lookback_days=args.lookback,
         min_volume_usd=args.min_volume,
+        active_vol_threshold=args.active_vol_threshold,
+        min_active_days=args.min_active_days,
+        min_trades=args.min_trades if args.min_trades > 0 else None,
         top_n=args.top_n,
         output_dir=args.output_dir,
         cmc_client=cmc,
@@ -134,6 +138,18 @@ def universe_v0b_command(args) -> None:
     client.close()
     if cmc:
         cmc.close()
+
+
+def features_v1_command(args) -> None:
+    build_features_v1(
+        ohlcv_path=args.ohlcv_file,
+        universe_dir=args.universe_dir,
+        output_path=args.output_file,
+        start=_parse_date(args.start),
+        end=_parse_date(args.end),
+        rebalance_freq=args.rebalance_freq,
+        active_vol_threshold=args.active_vol_threshold,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -192,6 +208,24 @@ def build_parser() -> argparse.ArgumentParser:
     v0b.add_argument("--end", required=True)
     v0b.add_argument("--lookback", type=int, default=30)
     v0b.add_argument("--min-volume", type=float, default=15_000_000)
+    v0b.add_argument(
+        "--active-vol-threshold",
+        type=float,
+        default=5_000_000,
+        help="USD volume threshold per day to count towards persistence (default: 5M)",
+    )
+    v0b.add_argument(
+        "--min-active-days",
+        type=int,
+        default=20,
+        help="Minimum # of days within lookback where volume >= active-vol-threshold",
+    )
+    v0b.add_argument(
+        "--min-trades",
+        type=float,
+        default=0.0,
+        help="Optional minimum avg trade count over lookback (0 disables filter)",
+    )
     v0b.add_argument("--top-n", type=int, default=40)
     v0b.add_argument("--output-dir", default="data/processed/universe/v0b")
     v0b.add_argument("--pool-size", type=int, default=120)
@@ -210,6 +244,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path for the month-by-month status CSV",
     )
     v0b.set_defaults(func=universe_v0b_command)
+
+    features = subparsers.add_parser("features-v1", help="Build V1 technical feature dataset")
+    features.add_argument("--ohlcv-file", required=True, help="Path to OHLCV parquet")
+    features.add_argument("--universe-dir", required=True, help="Directory with PIT CSVs")
+    features.add_argument("--output-file", default="data/processed/features/v1/features.parquet")
+    features.add_argument("--start", required=True)
+    features.add_argument("--end", required=True)
+    features.add_argument("--rebalance-freq", default="1W", help="Rebalance frequency (default 1W)")
+    features.add_argument(
+        "--active-vol-threshold",
+        type=float,
+        default=5_000_000,
+        help="Daily USD volume threshold for persistence calculations",
+    )
+    features.set_defaults(func=features_v1_command)
 
     return parser
 
