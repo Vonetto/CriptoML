@@ -29,6 +29,7 @@ def download_ohlcv(
     output_dir: Path | str = "data/raw/binance_futures/ohlcv",
     output_file: Path | str | None = None,
     client: BinanceFuturesClient | None = None,
+    append: bool = False,
 ) -> pd.DataFrame:
     """Download OHLCV candles for a list of symbols."""
 
@@ -55,6 +56,21 @@ def download_ohlcv(
     dataset = pd.concat(frames).sort_values(["timestamp", "symbol"]).reset_index(drop=True)
     outfile = output_file or _default_output(base_dir.parent, f"ohlcv_{interval}.parquet")
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+
+    if append and Path(outfile).exists():
+        try:
+            existing = pd.read_parquet(outfile)
+            combined = (
+                pd.concat([existing, dataset])
+                .drop_duplicates(subset=["timestamp", "symbol"])
+                .sort_values(["timestamp", "symbol"])
+                .reset_index(drop=True)
+            )
+            dataset = combined
+        except Exception:
+            # If read fails, fall back to fresh write
+            pass
+
     dataset.to_parquet(outfile, index=False)
     return dataset
 

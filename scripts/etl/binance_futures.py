@@ -20,6 +20,8 @@ from crypto_alpha.data.etl import (
     build_features_v2,
     build_universe_v0a,
     build_universe_v0b,
+    build_btc_regime,
+    build_macro_regime,
     download_ohlcv,
     download_open_interest,
     download_funding,
@@ -81,6 +83,7 @@ def ohlcv_command(args) -> None:
         output_dir=args.output_dir,
         output_file=args.output_file or None,
         client=client,
+        append=args.append,
     )
     client.close()
 
@@ -116,6 +119,35 @@ def funding_command(args) -> None:
     )
     client.close()
 
+def btc_regime_command(args) -> None:
+    build_btc_regime(
+        ohlcv_path=args.ohlcv_file,
+        funding_path=args.funding_file,
+        output_path=args.output_file,
+        symbol=args.symbol,
+        vol_threshold=args.vol_threshold,
+        dd_threshold=args.dd_threshold,
+        funding_threshold=args.funding_threshold,
+        entry_days=args.entry_days,
+        exit_days=args.exit_days,
+        hl_threshold=args.hl_threshold,
+        ret_30d_threshold=args.ret_30d_threshold,
+    )
+
+
+def macro_regime_command(args) -> None:
+    build_macro_regime(
+        output_path=args.output_file,
+        start=args.start,
+        end=args.end,
+        api_key=args.api_key,
+        vol_threshold=args.vol_threshold,
+        dxy_threshold=args.dxy_threshold,
+        ret_30d_threshold=args.ret_30d_threshold,
+        entry_days=args.entry_days,
+        exit_days=args.exit_days,
+    )
+
 
 def universe_v0a_command(args) -> None:
     client = BinanceFuturesClient()
@@ -143,6 +175,9 @@ def universe_v0b_command(args) -> None:
         active_vol_threshold=args.active_vol_threshold,
         min_active_days=args.min_active_days,
         min_trades=args.min_trades if args.min_trades > 0 else None,
+        filter_fake_volume=args.filter_fake_volume,
+        min_trades_filter=args.min_trades_filter,
+        max_vol_per_trade=args.max_vol_per_trade,
         top_n=args.top_n,
         output_dir=args.output_dir,
         cmc_client=cmc,
@@ -211,6 +246,11 @@ def build_parser() -> argparse.ArgumentParser:
     ohlcv.add_argument("--interval", default="1d")
     ohlcv.add_argument("--output-dir", default="data/raw/binance_futures/ohlcv")
     ohlcv.add_argument("--output-file", default="")
+    ohlcv.add_argument(
+        "--append",
+        action="store_true",
+        help="Si existe output-file, concatena y deduplica por timestamp+symbol en lugar de sobrescribir",
+    )
     ohlcv.set_defaults(func=ohlcv_command)
 
     oi = subparsers.add_parser(
@@ -263,6 +303,29 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.0,
         help="Optional minimum avg trade count over lookback (0 disables filter)",
+    )
+    v0b.add_argument(
+        "--filter-fake-volume",
+        action="store_true",
+        help="Apply extra filters: min avg trades and max vol_per_trade",
+    )
+    v0b.add_argument(
+        "--min-trades-filter",
+        type=float,
+        default=0.0,
+        help="Drop symbols with avg_trades_30d below this (used when --filter-fake-volume)",
+    )
+    v0b.add_argument(
+        "--max-vol-per-trade",
+        type=float,
+        default=None,
+        help="Drop symbols with vol_per_trade above this (used when --filter-fake-volume)",
+    )
+    v0b.add_argument(
+        "--vol-per-trade-z",
+        type=float,
+        default=None,
+        help="If set, drop symbols with vol_per_trade z-score above this (upper tail).",
     )
     v0b.add_argument("--top-n", type=int, default=40)
     v0b.add_argument("--output-dir", default="data/processed/universe/v0b")
@@ -317,6 +380,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="Daily USD volume threshold for persistence calculations",
     )
     features_v2.set_defaults(func=features_v2_command)
+
+    regime = subparsers.add_parser("btc-regime", help="Build BTC regime file")
+    regime.add_argument("--ohlcv-file", required=True, help="Path to OHLCV parquet")
+    regime.add_argument("--funding-file", required=True, help="Path to daily funding parquet")
+    regime.add_argument("--symbol", default="BTCUSDT", help="BTC symbol to use (default BTCUSDT)")
+    regime.add_argument("--output-file", default="data/processed/regime/btc_regime.parquet")
+    regime.add_argument("--vol-threshold", default="p80", help="Vol threshold (pXX or numeric)")
+    regime.add_argument("--dd-threshold", type=float, default=-0.50, help="DD threshold (e.g. -0.5)")
+    regime.add_argument(
+        "--funding-threshold",
+        type=float,
+        default=0.0005,
+        help="Abs funding mean 30d threshold (fraction, default 0.0005 ~= 0.05 pct per 8h)",
+    )
+    regime.add_argument(
+        "--hl-threshold",
+        default=None,
+        help="High/low range 30d threshold (pXX or numeric); if None, disabled",
+    )
+    regime.add_argument(
+        "--ret-30d-threshold",
+        type=float,
+        default=None,
+        help="ret_30d threshold to flag stress if return <= threshold (e.g. -0.10).",
+    )
+    regime.add_argument(
+        "--entry-days",
+        type=int,
+        default=1,
+        help="Consecutive stress_raw days to enter STRESS (hysteresis)",
+    )
+    regime.add_argument(
+        "--exit-days",
+        type=int,
+        default=1,
+        help="Consecutive normal days to exit STRESS (hysteresis)",
+    )
+    regime.set_defaults(func=btc_regime_command)
+
+    macro = subparsers.add_parser("macro-regime", help="Build macro (FRED) regime file")
+    macro.add_argument("--output-file", default="data/processed/regime/macro_regime.parquet")
+    macro.add_argument("--start", default="2015-01-01")
+    macro.add_argument("--end", default="2025-12-31")
+    macro.add_argument("--api-key", default="", help="FRED API key (or set FRED_API_KEY env)")
+    macro.add_argument("--vol-threshold", default="p80", help="VIX threshold (pXX or numeric)")
+    macro.add_argument("--dxy-threshold", default="p80", help="DXY threshold (pXX or numeric)")
+    macro.add_argument("--ret-30d-threshold", type=float, default=-0.05, help="SPX 30d return threshold")
+    macro.add_argument("--entry-days", type=int, default=3, help="Consecutive stress days to enter")
+    macro.add_argument("--exit-days", type=int, default=10, help="Consecutive normal days to exit")
+    macro.set_defaults(func=macro_regime_command)
 
     return parser
 

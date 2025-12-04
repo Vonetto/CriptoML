@@ -97,6 +97,7 @@ def _rolling_metrics(
     volume = ohlcv["volume_quote"].mean()
     trades = ohlcv.get("num_trades")
     avg_trades = trades.mean() if trades is not None else None
+    vol_per_trade = volume / avg_trades if avg_trades and avg_trades > 0 else None
     if active_vol_threshold > 0:
         persistence = (ohlcv["volume_quote"] >= active_vol_threshold).sum()
     else:
@@ -105,6 +106,7 @@ def _rolling_metrics(
         "symbol": symbol,
         "avg_volume_30d": volume,
         "avg_trades_30d": avg_trades,
+        "vol_per_trade": vol_per_trade,
         "volume_active_days": persistence,
         "active_vol_threshold": active_vol_threshold,
     }
@@ -134,6 +136,11 @@ def build_universe_v0b(
     active_vol_threshold: float = 5_000_000,
     min_active_days: int = 20,
     min_trades: float | None = None,
+    filter_fake_volume: bool = False,
+    min_trades_filter: float = 0.0,
+    max_vol_per_trade: float | None = None,
+    vol_per_trade_z: float | None = None,
+    vol_per_trade_z_tail: str = "upper",
     top_n: int = 40,
     output_dir: Path | str = "data/processed/universe/v0b",
     cmc_client: CoinMarketCapClient | None = None,
@@ -244,6 +251,36 @@ def build_universe_v0b(
         logger.info("%s: metrics computed for %d/%d symbols", month_label, len(df), len(symbols))
 
         filter_note: list[str] = []
+
+        # Backfill vol_per_trade if missing (old cache files)
+        if "vol_per_trade" not in df.columns:
+            if "avg_volume_30d" in df.columns and "avg_trades_30d" in df.columns:
+                df["vol_per_trade"] = df.apply(
+                    lambda row: row["avg_volume_30d"] / row["avg_trades_30d"]
+                    if pd.notna(row.get("avg_trades_30d")) and row.get("avg_trades_30d") > 0
+                    else pd.NA,
+                    axis=1,
+                )
+            else:
+                df["vol_per_trade"] = pd.NA
+
+        if filter_fake_volume and not df.empty:
+            before = len(df)
+            if min_trades_filter > 0:
+                df = df[(df["avg_trades_30d"].isna()) | (df["avg_trades_30d"] >= min_trades_filter)]
+            if max_vol_per_trade is not None:
+                df = df[(df["vol_per_trade"].isna()) | (df["vol_per_trade"] <= max_vol_per_trade)]
+            if vol_per_trade_z is not None and not df["vol_per_trade"].isna().all():
+                vt = df["vol_per_trade"]
+                z = (vt - vt.mean()) / vt.std(ddof=0)
+                if vol_per_trade_z_tail == "upper":
+                    mask = (z <= vol_per_trade_z) | z.isna()
+                else:
+                    mask = (z >= -vol_per_trade_z) | z.isna()
+                df = df[mask]
+            removed = before - len(df)
+            filter_note.append(f"fakevol_removed={removed}")
+            logger.info("%s: fake-volume filter removed %d symbols", month_label, removed)
 
         filtered = df[df["avg_volume_30d"] >= min_volume_usd].copy()
         filter_note.append(f"vol>={len(filtered)}")

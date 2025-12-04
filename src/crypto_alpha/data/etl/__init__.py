@@ -3,6 +3,8 @@
 from .binance_futures import download_open_interest, download_ohlcv, download_funding
 from .features_v1 import build_features_v1
 from .features_v2 import build_features_v2
+from .btc_regime import build_btc_regime
+from .macro_regime import build_macro_regime
 from .universe_builder import build_universe_v0a, build_universe_v0b
 
 __all__ = [
@@ -13,4 +15,6 @@ __all__ = [
     "build_universe_v0b",
     "build_features_v1",
     "build_features_v2",
+    "build_btc_regime",
+    "build_macro_regime",
 ]

@@ -21,6 +21,8 @@ class StrategyConfig:
     execution: Dict[str, Any]
     backtest: Dict[str, Any]
     risk_overlay: Dict[str, Any] | None = None
+    regime: Dict[str, Any] | None = None
+    intraday: Dict[str, Any] | None = None
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:

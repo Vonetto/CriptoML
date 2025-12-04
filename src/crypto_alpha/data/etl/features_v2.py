@@ -29,9 +29,12 @@ FEATURE_COLUMNS_V2 = [
     "rsi_14",
     "volume_ratio_7d",
     "volume_ratio_30d",
+    "avg_volume_quote_7d",
     "avg_volume_quote_30d",
     "avg_num_trades_30d",
     "volume_persistence_30d",
+    "skew_30d",
+    "kurt_30d",
     # Carry / funding
     "funding_1d_lag",
     "funding_7d_mean",
@@ -78,6 +81,7 @@ def _compute_features_v2(
     )
     df["volume_ratio_7d"] = df["volume_quote"] / vol_ma7
     df["volume_ratio_30d"] = df["volume_quote"] / vol_ma30
+    df["avg_volume_quote_7d"] = vol_ma7
     df["avg_volume_quote_30d"] = vol_ma30
 
     if "num_trades" in df.columns:
@@ -93,6 +97,14 @@ def _compute_features_v2(
         )
     )
     df["volume_persistence_30d"] = persistence
+
+    # Asimetría y cola de retornos (rolling en log-returns diarios)
+    df["skew_30d"] = daily_log_ret.groupby(df["symbol"]).transform(
+        lambda s: s.rolling(30, min_periods=30).skew()
+    )
+    df["kurt_30d"] = daily_log_ret.groupby(df["symbol"]).transform(
+        lambda s: s.rolling(30, min_periods=30).kurt()
+    )
 
     # --- Carry / funding (PIT, sin lookahead: usar datos <= t-1) ---
     if "funding_rate_1d" not in df.columns:

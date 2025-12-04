@@ -213,6 +213,11 @@ def portfolio_return(
             continue
         start = start_prices[symbol]
         end = end_prices[symbol]
+        # In case of duplicate index entries, take the first
+        if isinstance(start, pd.Series):
+            start = start.iloc[0]
+        if isinstance(end, pd.Series):
+            end = end.iloc[0]
         if pd.isna(start) or pd.isna(end) or start <= 0:
             continue
         total += weight * (float(end) / float(start) - 1.0)
