@@ -1,0 +1,32 @@
+name: buyhold_btc
+description: Benchmark buy & hold 100% BTCUSDT (no rebalances)
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/buyhold_btc
+  top_n: 1
+
+signal:
+  type: momentum
+  lookback_days: 1
+  annualize: false
+
+portfolio:
+  selection_top_pct: 1.0
+  selection_bottom_pct: 0.0
+  rebalance_freq: 1W  # weekly rebalance (no effect with single asset)
+  weighting: equal
+  cash_buffer_pct: 0.0
+
+execution:
+  commission_pct: 0.0004
+  slippage_model: none
+
+backtest:
+  initial_capital: 1000
+  start_date: 2019-11-01
+  end_date: 2025-07-01
+  seed: 42

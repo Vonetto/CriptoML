@@ -1,0 +1,32 @@
+name: buyhold_eqw
+description: Benchmark equal-weight of PIT universe (top 40) with monthly rebalance
+references:
+  data_config: configs/data/binance_daily.yaml
+  backtest_config: configs/backtest/daily_default.yaml
+
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+  top_n: 40
+
+signal:
+  type: momentum
+  lookback_days: 1
+  annualize: false
+
+portfolio:
+  selection_top_pct: 1.0   # keep all symbols in universe
+  selection_bottom_pct: 0.0
+  rebalance_freq: 1M
+  weighting: equal
+  cash_buffer_pct: 0.0
+
+execution:
+  commission_pct: 0.0005
+  slippage_model: none
+
+backtest:
+  initial_capital: 1000
+  start_date: 2019-11-01
+  end_date: 2025-07-01
+  seed: 42

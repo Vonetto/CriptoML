@@ -22,6 +22,15 @@ __pycache__/
 !experiments/.gitkeep
 data/
 experiments/
+tmp/
+outputs/
+
+# Temp / scratch configs
+configs/strategy/_tmp_*.yaml
+configs/backtest/_tmp_*.yaml
+configs/strategy/_hold_*.yaml
+configs/strategy/archive/
+
 !src/crypto_alpha/data/**
 !src/crypto_alpha/data
 
@@ -35,3 +44,4 @@ logs/
 
 
 *.zip
+.venv-streamlit/
