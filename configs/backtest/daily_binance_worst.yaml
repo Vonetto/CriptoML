@@ -1,0 +1,19 @@
+name: daily_binance_worst
+calendar: crypto_daily
+clock:
+  data_frequency: 1D
+  rebalance_time: "00:00"
+risk_model:
+  return_col: close
+  price_col: close
+  cash_symbol: USDT
+execution:
+  # Worst-case conservative for Binance USDT-M futures (VIP0 taker + extra slippage)
+  commission_pct: 0.0008      # 0.08% per notional (taker upper bound + buffer)
+  slippage_model: fixed
+  slippage_alpha: 0.0010      # 0.10% * |daily_ret| * turnover (engine formula)
+output:
+  root_dir: experiments
+  save_equity_curve: true
+  save_orders: true
+  save_logs: true

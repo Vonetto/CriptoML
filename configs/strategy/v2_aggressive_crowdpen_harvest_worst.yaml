@@ -1,0 +1,35 @@
+name: v2_aggressive_crowdpen_harvest_worst
+description: >
+  Aggressive crowd-pen with conservative Binance costs (commission 0.08% + slippage_alpha 0.10%)
+  and harvest/stop overlay (step 30%, pct 5%, stop_dd 10%, cooldown 10d).
+references:
+  backtest_config: configs/backtest/daily_binance_worst.yaml
+universe:
+  type: pit_csv
+  path: data/processed/universe/v0b
+data:
+  ohlcv_file: data/processed/binance/ohlcv_1d.parquet
+  features_file: data/processed/features/v2/features.parquet
+model:
+  type: ridge_v2
+  path: data/processed/models/v2/ridge.pkl
+portfolio:
+  rebalance_freq: 1W
+  selection:
+    long_top: 15
+    short_top: 15
+  weighting: max_div
+  cap_pct: 0.05
+  beta_hedge:
+    enabled: true
+    lookback: 60
+  crowd_penalty:
+    enabled: true
+    lookback_days: 30
+    power: 1.0
+  harvest_stop:
+    stop_dd: 0.10
+    stop_cooldown: 10
+    harvest_step: 0.30
+    harvest_pct: 0.05
+    note: "Applied offline with scripts/tools/harvest_stop_sim.py"
